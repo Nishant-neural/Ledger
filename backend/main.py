@@ -35,6 +35,9 @@ class TransactionCreate(BaseModel):
     customer_id: int
     amount: float
     type: str
+    quantity: int | None = None
+    type_option: str | None = None
+    price_per_pc: float | None = None
 
 class CustomerRead(BaseModel):
     id: int
@@ -49,6 +52,9 @@ class TransactionRead(BaseModel):
     amount: float
     type: str
     timestamp: datetime
+    quantity: int | None = None
+    type_option: str | None = None
+    price_per_pc: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,6 +95,9 @@ def add_transaction(transaction: TransactionCreate, db: Session = Depends(get_db
         customer_id=transaction.customer_id,
         amount=transaction.amount,
         type=transaction.type,
+        quantity=transaction.quantity,
+        type_option=transaction.type_option,
+        price_per_pc=transaction.price_per_pc,
     )
     db.add(db_txn)
     db.commit()

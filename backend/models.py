@@ -18,3 +18,6 @@ class Transaction(Base):
     amount = Column(Float)
     type = Column(String)  # "credit" or "payment"
     timestamp = Column(DateTime, default=datetime.utcnow)
+    quantity = Column(Integer, nullable=True)
+    type_option = Column(String, nullable=True)  # "ss" or "ms"
+    price_per_pc = Column(Float, nullable=True)
