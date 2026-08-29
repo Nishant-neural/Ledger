@@ -15,6 +15,10 @@ COLUMN_ALIASES = {
     "description": ["description", "details", "narration", "remarks", "note"],
     "debit": ["debit", "expense", "paid", "out", "withdrawal"],
     "credit": ["credit", "income", "received", "in", "deposit"],
+    "item": ["item", "product", "item name", "product name"],
+    "stock": ["stock", "stock/qty", "quantity", "qty", "units", "sold"],
+    "buying_rate": ["buying rate", "buy rate", "purchase rate", "cost price"],
+    "selling_rate": ["selling rate", "sell rate", "sale rate", "selling price"],
 }
 
 
@@ -93,8 +97,16 @@ def import_excel(filepath, column_mapping=None):
             credit = row[mapping["credit"]] if mapping.get("credit") is not None else 0
             debit = float(debit) if debit not in (None, "") else 0.0
             credit = float(credit) if credit not in (None, "") else 0.0
+            item = str(row[mapping["item"]]).strip() if mapping.get("item") is not None and row[mapping["item"]] is not None else ""
+            stock = row[mapping["stock"]] if mapping.get("stock") is not None else 0
+            buying_rate = row[mapping["buying_rate"]] if mapping.get("buying_rate") is not None else 0
+            selling_rate = row[mapping["selling_rate"]] if mapping.get("selling_rate") is not None else 0
+            stock = float(stock) if stock not in (None, "") else 0.0
+            buying_rate = float(buying_rate) if buying_rate not in (None, "") else 0.0
+            selling_rate = float(selling_rate) if selling_rate not in (None, "") else 0.0
 
-            db.add_transaction(date_str, party, category, description, debit, credit)
+            db.add_transaction(date_str, party, category, description, debit, credit,
+                               item, stock, buying_rate, selling_rate)
             if category:
                 db.add_category(category)
             success += 1
@@ -109,19 +121,22 @@ def export_excel(filepath, rows):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Ledger"
-    headers = ["Date", "Party", "Category", "Description", "Debit", "Credit", "Balance"]
+    headers = ["Date", "Item", "Party", "Category", "Stock/Qty", "Buying Rate",
+               "Selling Rate", "Total Sales", "Description", "Debit", "Credit", "Balance"]
     ws.append(headers)
 
     running_balance = 0.0
     for r in rows:
         running_balance += (r["credit"] or 0) - (r["debit"] or 0)
         ws.append([
-            r["date"], r["party"], r["category"], r["description"],
-            r["debit"], r["credit"], round(running_balance, 2)
+            r["date"], r["item"], r["party"], r["category"], r["stock"],
+            r["buying_rate"], r["selling_rate"],
+            round((r["stock"] or 0) * (r["selling_rate"] or 0), 2),
+            r["description"], r["debit"], r["credit"], round(running_balance, 2)
         ])
 
     # basic column widths
-    widths = [12, 20, 16, 30, 10, 10, 12]
+    widths = [12, 18, 20, 16, 10, 12, 12, 12, 30, 10, 10, 12]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
