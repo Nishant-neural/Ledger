@@ -4,16 +4,23 @@ Fully offline - creates a local file called ledger.db in the same folder.
 """
 import sqlite3
 import os
-from datetime import datetime
+from pathlib import Path
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ledger.db")
+APP_NAME = "SimpleLedger"
+
+APP_DATA_DIR = Path(
+    os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+) / APP_NAME
+
+APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_FILE = str(APP_DATA_DIR / "ledger.db")
 
 
 def get_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
-
 
 def init_db():
     conn = get_connection()
