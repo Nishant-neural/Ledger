@@ -15,6 +15,16 @@ locally in a single file (`ledger.db`) right next to the app.
 
 ---
 
+## SME helper features
+- Inventory report with purchased, sold, available stock, stock value, sales value, and gross profit by item
+- Low-stock report for items with 5 or fewer units available
+- Party balances showing total credit, total debit, net balance, and receivable/payable status
+- Daily cashbook showing cash in, cash out, net change, and running balance by date
+- Quick entry presets for Sale, Purchase, Payment In, and Payment Out
+- Excel export now includes Ledger, Daily Cashbook, Party Balances, Inventory, and Low Stock sheets
+
+---
+
 ## 1. One-time setup
 
 You need **Python 3.9+** installed (Windows/macOS/Linux all work).

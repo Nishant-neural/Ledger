@@ -41,6 +41,7 @@ class LedgerApp(tk.Tk):
         self._build_header()
         self._build_toolbar()
         self._build_summary_bar()
+        self._build_business_tools()
         self._build_table()
         self._build_entry_form()
 
@@ -116,6 +117,24 @@ class LedgerApp(tk.Tk):
         self.month_sales_label = tk.Label(self.summary_frame, text="Month Sales: ₹0.00",
                           font=FONT_SUMMARY, bg="white", fg="#8e44ad")
         self.month_sales_label.pack(side="left", padx=20)
+
+    def _build_business_tools(self):
+        tools = tk.Frame(self, bg=APP_BG, pady=2)
+        tools.pack(fill="x", padx=16, pady=(0, 8))
+
+        tk.Label(tools, text="SME tools:", bg=APP_BG, font=FONT_BOLD).pack(side="left", padx=(0, 8))
+        tk.Button(tools, text="Inventory", command=self.show_inventory_report,
+                  font=FONT_NORMAL, bg="white", fg="#2c3e50", relief="groove", padx=10
+                  ).pack(side="left", padx=4)
+        tk.Button(tools, text="Low Stock", command=self.show_low_stock_report,
+                  font=FONT_NORMAL, bg="white", fg="#2c3e50", relief="groove", padx=10
+                  ).pack(side="left", padx=4)
+        tk.Button(tools, text="Party Balances", command=self.show_party_balances,
+                  font=FONT_NORMAL, bg="white", fg="#2c3e50", relief="groove", padx=10
+                  ).pack(side="left", padx=4)
+        tk.Button(tools, text="Daily Cashbook", command=self.show_cashbook,
+                  font=FONT_NORMAL, bg="white", fg="#2c3e50", relief="groove", padx=10
+                  ).pack(side="left", padx=4)
 
     def _build_table(self):
         table_frame = tk.Frame(self, bg=APP_BG)
@@ -199,6 +218,18 @@ class LedgerApp(tk.Tk):
 
         btn_frame = tk.Frame(form, bg="white")
         btn_frame.pack(fill="x", pady=(8, 0))
+        tk.Button(btn_frame, text="Sale", command=lambda: self.set_transaction_preset("Sales"),
+                  bg="#ecf7fb", fg="#1f618d", font=FONT_NORMAL, relief="groove", padx=12, pady=6
+                  ).pack(side="left", padx=4)
+        tk.Button(btn_frame, text="Purchase", command=lambda: self.set_transaction_preset("Purchases"),
+                  bg="#fef5e7", fg="#935116", font=FONT_NORMAL, relief="groove", padx=12, pady=6
+                  ).pack(side="left", padx=4)
+        tk.Button(btn_frame, text="Payment In", command=lambda: self.set_transaction_preset("Payment In"),
+                  bg="#eafaf1", fg="#1e8449", font=FONT_NORMAL, relief="groove", padx=12, pady=6
+                  ).pack(side="left", padx=4)
+        tk.Button(btn_frame, text="Payment Out", command=lambda: self.set_transaction_preset("Payment Out"),
+                  bg="#fdedec", fg=DANGER, font=FONT_NORMAL, relief="groove", padx=12, pady=6
+                  ).pack(side="left", padx=4)
         tk.Button(btn_frame, text="Add Transaction", command=self.add_transaction,
                   bg=ACCENT, fg="white", font=FONT_BOLD, relief="flat", padx=14, pady=6
                   ).pack(side="left", padx=4)
@@ -260,6 +291,131 @@ class LedgerApp(tk.Tk):
         self.date_from.delete(0, "end")
         self.date_to.delete(0, "end")
         self.refresh_table()
+
+    def set_transaction_preset(self, category):
+        self.entry_category.set(category)
+        if category == "Payment In":
+            self.entry_debit.delete(0, "end")
+        elif category == "Payment Out":
+            self.entry_credit.delete(0, "end")
+        self.refresh_calculated_amounts()
+
+    def _format_money(self, value):
+        return f"₹{(value or 0):,.2f}"
+
+    def _format_qty(self, value):
+        return f"{(value or 0):,.2f}"
+
+    def _show_report_window(self, title, columns, headings, widths, rows, empty_message):
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.geometry("920x460")
+        win.configure(bg=APP_BG)
+
+        tk.Label(win, text=title, font=FONT_HEADER, bg=APP_BG, fg="#2c3e50",
+                 padx=16, pady=12).pack(anchor="w")
+
+        frame = tk.Frame(win, bg=APP_BG)
+        frame.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+        for col in columns:
+            tree.heading(col, text=headings[col])
+            anchor = "e" if col not in ("date", "item", "party", "status") else "w"
+            tree.column(col, width=widths.get(col, 100), anchor=anchor)
+
+        if rows:
+            for row in rows:
+                tree.insert("", "end", values=row)
+        else:
+            tree.insert("", "end", values=(empty_message,) + ("",) * (len(columns) - 1))
+
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+    def show_inventory_report(self):
+        rows = []
+        for item in db.get_inventory_report():
+            rows.append((
+                item["item"],
+                self._format_qty(item["purchased_qty"]),
+                self._format_qty(item["sold_qty"]),
+                self._format_qty(item["available_qty"]),
+                self._format_money(item["stock_value"]),
+                self._format_money(item["sales_value"]),
+                self._format_money(item["gross_profit"]),
+            ))
+        columns = ("item", "purchased", "sold", "available", "stock_value", "sales", "profit")
+        headings = {
+            "item": "Item", "purchased": "Purchased Qty", "sold": "Sold Qty",
+            "available": "Available", "stock_value": "Stock Value",
+            "sales": "Sales Value", "profit": "Gross Profit",
+        }
+        widths = {"item": 190, "purchased": 110, "sold": 100, "available": 100,
+                  "stock_value": 120, "sales": 120, "profit": 120}
+        self._show_report_window("Inventory Report", columns, headings, widths, rows,
+                                 "No item transactions yet")
+
+    def show_low_stock_report(self):
+        rows = []
+        for item in db.get_low_stock_items(limit=5):
+            status = "Out of stock" if item["available_qty"] <= 0 else "Low stock"
+            rows.append((
+                item["item"],
+                self._format_qty(item["available_qty"]),
+                self._format_qty(item["sold_qty"]),
+                self._format_money(item["stock_value"]),
+                status,
+            ))
+        columns = ("item", "available", "sold", "stock_value", "status")
+        headings = {
+            "item": "Item", "available": "Available", "sold": "Sold Qty",
+            "stock_value": "Stock Value", "status": "Status",
+        }
+        widths = {"item": 260, "available": 110, "sold": 110, "stock_value": 130, "status": 140}
+        self._show_report_window("Low Stock Items", columns, headings, widths, rows,
+                                 "No low-stock items")
+
+    def show_party_balances(self):
+        rows = []
+        for party in db.get_party_balances():
+            balance = party["net_balance"] or 0
+            status = "Receivable" if balance > 0 else "Payable" if balance < 0 else "Settled"
+            rows.append((
+                party["party"],
+                self._format_money(party["total_credit"]),
+                self._format_money(party["total_debit"]),
+                self._format_money(balance),
+                status,
+            ))
+        columns = ("party", "credit", "debit", "balance", "status")
+        headings = {
+            "party": "Party", "credit": "Total Credit", "debit": "Total Debit",
+            "balance": "Net Balance", "status": "Status",
+        }
+        widths = {"party": 260, "credit": 130, "debit": 130, "balance": 130, "status": 120}
+        self._show_report_window("Party Balances", columns, headings, widths, rows,
+                                 "No parties recorded yet")
+
+    def show_cashbook(self):
+        rows = []
+        for day in db.get_cashbook(self.date_from.get().strip(), self.date_to.get().strip()):
+            rows.append((
+                day["date"],
+                self._format_money(day["cash_in"]),
+                self._format_money(day["cash_out"]),
+                self._format_money(day["net"]),
+                self._format_money(day["running_balance"]),
+            ))
+        columns = ("date", "cash_in", "cash_out", "net", "running")
+        headings = {
+            "date": "Date", "cash_in": "Cash In", "cash_out": "Cash Out",
+            "net": "Net Change", "running": "Running Balance",
+        }
+        widths = {"date": 120, "cash_in": 140, "cash_out": 140, "net": 140, "running": 160}
+        self._show_report_window("Daily Cashbook", columns, headings, widths, rows,
+                                 "No transactions in this date range")
 
     def on_row_select(self, event):
         selected = self.tree.selection()

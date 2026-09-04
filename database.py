@@ -45,13 +45,10 @@ def init_db():
     }.items():
         if column not in existing_columns:
             cur.execute(f"ALTER TABLE transactions ADD COLUMN {column} {definition}")
-    # seed some common categories if empty
-    cur.execute("SELECT COUNT(*) FROM categories")
-    if cur.fetchone()[0] == 0:
-        defaults = ["Sales", "Purchases", "Rent", "Salary", "Utilities",
-                    "Transport", "Misc Income", "Misc Expense"]
-        cur.executemany("INSERT INTO categories (name) VALUES (?)",
-                         [(d,) for d in defaults])
+    defaults = ["Sales", "Purchases", "Payment In", "Payment Out", "Rent",
+                "Salary", "Utilities", "Transport", "Misc Income", "Misc Expense"]
+    cur.executemany("INSERT OR IGNORE INTO categories (name) VALUES (?)",
+                    [(d,) for d in defaults])
     conn.commit()
     conn.close()
 
@@ -179,6 +176,123 @@ def get_sales_summary(month=""):
     row = cur.fetchone()
     conn.close()
     return row["total_sales"], row["total_purchase"], row["total_stock"]
+
+
+def get_party_balances():
+    """Return debit/credit totals and net balance for every party."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT party,
+               COALESCE(SUM(debit), 0) AS total_debit,
+               COALESCE(SUM(credit), 0) AS total_credit,
+               COALESCE(SUM(credit - debit), 0) AS net_balance
+        FROM transactions
+        WHERE TRIM(COALESCE(party, '')) != ''
+        GROUP BY party
+        ORDER BY ABS(net_balance) DESC, party ASC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_cashbook(date_from="", date_to=""):
+    """Return day-wise cash in, cash out, and running balance."""
+    conn = get_connection()
+    cur = conn.cursor()
+    query = """
+        SELECT date,
+               COALESCE(SUM(credit), 0) AS cash_in,
+               COALESCE(SUM(debit), 0) AS cash_out
+        FROM transactions
+        WHERE 1=1
+    """
+    params = []
+    if date_from:
+        query += " AND date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND date <= ?"
+        params.append(date_to)
+    query += " GROUP BY date ORDER BY date ASC"
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+
+    running = 0.0
+    cashbook = []
+    for row in rows:
+        cash_in = row["cash_in"] or 0
+        cash_out = row["cash_out"] or 0
+        running += cash_in - cash_out
+        cashbook.append({
+            "date": row["date"],
+            "cash_in": cash_in,
+            "cash_out": cash_out,
+            "net": cash_in - cash_out,
+            "running_balance": running,
+        })
+    return cashbook
+
+
+def get_inventory_report():
+    """Return item-wise purchased, sold, available stock, value, and profit."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT item, category, stock, buying_rate, selling_rate
+        FROM transactions
+        WHERE TRIM(COALESCE(item, '')) != ''
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    items = {}
+    for row in rows:
+        item_name = row["item"] or ""
+        data = items.setdefault(item_name, {
+            "item": item_name,
+            "purchased_qty": 0.0,
+            "sold_qty": 0.0,
+            "purchase_value": 0.0,
+            "sales_value": 0.0,
+            "sales_cost": 0.0,
+        })
+        category = (row["category"] or "").strip().lower()
+        qty = row["stock"] or 0
+        buying_rate = row["buying_rate"] or 0
+        selling_rate = row["selling_rate"] or 0
+        if category == "purchases":
+            data["purchased_qty"] += qty
+            data["purchase_value"] += qty * buying_rate
+        elif category == "sales":
+            data["sold_qty"] += qty
+            data["sales_value"] += qty * selling_rate
+            data["sales_cost"] += qty * buying_rate
+
+    report = []
+    for data in items.values():
+        avg_cost = (
+            data["purchase_value"] / data["purchased_qty"]
+            if data["purchased_qty"] else 0.0
+        )
+        fallback_cost = data["sold_qty"] * avg_cost
+        cost_of_sales = data["sales_cost"] or fallback_cost
+        available_qty = data["purchased_qty"] - data["sold_qty"]
+        report.append({
+            **data,
+            "available_qty": available_qty,
+            "avg_cost": avg_cost,
+            "stock_value": available_qty * avg_cost,
+            "gross_profit": data["sales_value"] - cost_of_sales,
+        })
+    return sorted(report, key=lambda r: (r["available_qty"], r["item"].lower()))
+
+
+def get_low_stock_items(limit=5):
+    """Return inventory rows at or below the requested available quantity."""
+    return [row for row in get_inventory_report() if row["available_qty"] <= limit]
 
 
 def clear_all_transactions():

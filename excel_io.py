@@ -117,7 +117,7 @@ def import_excel(filepath, column_mapping=None):
 
 
 def export_excel(filepath, rows):
-    """Export a list of transaction rows (sqlite3.Row objects) to an Excel file."""
+    """Export transactions and SME helper reports to an Excel workbook."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Ledger"
@@ -139,5 +139,45 @@ def export_excel(filepath, rows):
     widths = [12, 18, 20, 16, 10, 12, 12, 12, 30, 10, 10, 12]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    cashbook_ws = wb.create_sheet("Daily Cashbook")
+    cashbook_ws.append(["Date", "Cash In", "Cash Out", "Net Change", "Running Balance"])
+    for row in db.get_cashbook():
+        cashbook_ws.append([
+            row["date"], row["cash_in"], row["cash_out"],
+            row["net"], row["running_balance"]
+        ])
+
+    party_ws = wb.create_sheet("Party Balances")
+    party_ws.append(["Party", "Total Credit", "Total Debit", "Net Balance", "Status"])
+    for row in db.get_party_balances():
+        balance = row["net_balance"] or 0
+        status = "Receivable" if balance > 0 else "Payable" if balance < 0 else "Settled"
+        party_ws.append([
+            row["party"], row["total_credit"], row["total_debit"], balance, status
+        ])
+
+    inventory_ws = wb.create_sheet("Inventory")
+    inventory_ws.append([
+        "Item", "Purchased Qty", "Sold Qty", "Available Qty", "Avg Cost",
+        "Stock Value", "Sales Value", "Gross Profit"
+    ])
+    for row in db.get_inventory_report():
+        inventory_ws.append([
+            row["item"], row["purchased_qty"], row["sold_qty"], row["available_qty"],
+            row["avg_cost"], row["stock_value"], row["sales_value"], row["gross_profit"]
+        ])
+
+    low_stock_ws = wb.create_sheet("Low Stock")
+    low_stock_ws.append(["Item", "Available Qty", "Sold Qty", "Stock Value", "Status"])
+    for row in db.get_low_stock_items(limit=5):
+        status = "Out of stock" if row["available_qty"] <= 0 else "Low stock"
+        low_stock_ws.append([
+            row["item"], row["available_qty"], row["sold_qty"], row["stock_value"], status
+        ])
+
+    for sheet in wb.worksheets[1:]:
+        for col in range(1, sheet.max_column + 1):
+            sheet.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 18
 
     wb.save(filepath)
