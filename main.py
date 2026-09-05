@@ -12,7 +12,9 @@ Features:
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from datetime import date
+from datetime import date, datetime
+import shutil
+from pathlib import Path
 
 import database as db
 import excel_io
@@ -135,6 +137,27 @@ class LedgerApp(tk.Tk):
         tk.Button(tools, text="Daily Cashbook", command=self.show_cashbook,
                   font=FONT_NORMAL, bg="white", fg="#2c3e50", relief="groove", padx=10
                   ).pack(side="left", padx=4)
+        tk.Button(
+    tools,
+    text="💾 Backup Data",
+    command=self.backup_database,
+    font=FONT_NORMAL,
+    bg="white",
+    fg="#2c3e50",
+    relief="groove",
+    padx=10
+).pack(side="right", padx=4)
+
+        tk.Button(
+    tools,
+    text="📂 Restore Backup",
+    command=self.restore_database,
+    font=FONT_NORMAL,
+    bg="white",
+    fg="#2c3e50",
+    relief="groove",
+    padx=10
+).pack(side="right", padx=4)
 
     def _build_table(self):
         table_frame = tk.Frame(self, bg=APP_BG)
@@ -614,6 +637,105 @@ class LedgerApp(tk.Tk):
         rows = db.get_transactions()
         excel_io.export_excel(filepath, rows)
         messagebox.showinfo("Export complete", f"Ledger exported to:\n{filepath}")
+
+    def backup_database(self):
+      """Create a copy of the ledger database."""
+
+      source = Path(db.DB_FILE)
+
+      if not source.exists():
+        messagebox.showerror(
+            "Backup Error",
+            "Database file was not found."
+        )
+        return
+
+      timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+      destination = filedialog.asksaveasfilename(
+        title="Backup Ledger Data",
+        defaultextension=".db",
+        initialfile=f"ledger_backup_{timestamp}.db",
+        filetypes=[
+            ("Ledger Backup", "*.db"),
+            ("All Files", "*.*")
+        ]
+    )
+
+      if not destination:
+        return
+
+      try:
+        shutil.copy2(source, destination)
+
+        messagebox.showinfo(
+            "Backup Complete",
+            f"Your ledger data was backed up successfully.\n\n"
+            f"Backup location:\n{destination}"
+        )
+
+      except Exception as e:
+        messagebox.showerror(
+            "Backup Failed",
+            f"Could not create backup.\n\nError:\n{e}"
+        )
+
+
+    def restore_database(self):
+      """Restore the database from a backup file."""
+
+      backup_file = filedialog.askopenfilename(
+        title="Select Ledger Backup",
+        filetypes=[
+            ("Ledger Backup", "*.db"),
+            ("All Files", "*.*")
+        ]
+    )
+
+      if not backup_file:
+        return
+
+      confirm = messagebox.askyesno(
+        "Restore Backup",
+        "WARNING: Restoring a backup will replace your current ledger data.\n\n"
+        "Your current database will be automatically backed up first.\n\n"
+        "Do you want to continue?"
+    )
+
+      if not confirm:
+        return
+
+      try:
+        current_db = Path(db.DB_FILE)
+
+        # Safety backup before restoring
+        if current_db.exists():
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+            safety_backup = current_db.with_name(
+                f"ledger_before_restore_{timestamp}.db"
+            )
+
+            shutil.copy2(current_db, safety_backup)
+
+        # Restore selected backup
+        shutil.copy2(backup_file, current_db)
+
+        self.selected_id = None
+        self.clear_form()
+        self.refresh_table()
+
+        messagebox.showinfo(
+            "Restore Complete",
+            "Your ledger data was restored successfully.\n\n"
+            "The previous database was automatically saved as a safety backup."
+        )
+
+      except Exception as e:
+        messagebox.showerror(
+            "Restore Failed",
+            f"Could not restore the backup.\n\nError:\n{e}"
+        )
 
 
 if __name__ == "__main__":
